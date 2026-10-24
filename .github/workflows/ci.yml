@@ -1,0 +1,47 @@
+# Pipeline de Integracion Continua (CI) con GitHub Actions.
+# Se ejecuta en cada push y en cada Pull Request: si algun test falla, el pipeline se detiene
+# y queda en rojo, protegiendo la calidad del codigo antes de hacer merge.
+name: Java CI
+
+# "on": que eventos disparan el pipeline.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # Maquina virtual donde corre el job. Ubuntu ya trae Docker, asi que Testcontainers funciona.
+    runs-on: ubuntu-latest
+
+    # Token de SonarQube guardado como "secret" del repositorio (Settings -> Secrets -> Actions).
+    # NUNCA se escribe el token directamente en este archivo.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    steps:
+      # 1) Descarga el codigo del repositorio en la maquina virtual.
+      - uses: actions/checkout@v4
+
+      # 2) Instala Java 21 (la version que pide el pom.xml) y cachea las dependencias de Maven.
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # 3) Compila y ejecuta TODOS los tests: unitarios (mvn test) + integracion (*IT) + reporte JaCoCo.
+      - name: Ejecutar tests
+        run: |
+          chmod +x mvnw
+          ./mvnw -B verify
+
+      # 4) (Opcional) Envia el analisis a SonarQube Cloud. Solo corre si se configuro el secret SONAR_TOKEN.
+      #    Reemplazar "mi-organizacion" por la organizacion creada en sonarcloud.io.
+      - name: Analisis con SonarQube
+        if: env.SONAR_TOKEN != ''
+        run: >
+          ./mvnw -B sonar:sonar
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.organization=mi-organizacion
+          -Dsonar.token=$SONAR_TOKEN
